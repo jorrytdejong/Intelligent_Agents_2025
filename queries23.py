@@ -552,14 +552,59 @@ def violation_oracle(triple: Dict[str, str]) -> int:
     - Trait mismatches vs ontology -> evaluation omitted by default (0)
     """
     subj, pred, obj = triple['subj'], triple['pred'], triple['obj']
+    
+    # Set violation for scenario 1
     if pred == "hasAge":
         try:
             return 1 if int(obj) < 18 else 0
         except:
             return 1
-    if pred == "description" and subj == "Paris":
-        return 1 if obj in {"quiet", "empty", "calm"} else 0
+
+    # Set violation for scenario 2
+    if pred == "description":
+        # Apply to Paris or any city with high population
+        if subj in {"Paris", "Los_Angeles"} and obj in {"quiet", "empty", "calm"}:
+            return 1
+        return 0
     # For evaluation, we handle multiple occupations in collect_labels (needs context).
+
+    # Set violation for scenario 3
+    if pred == "description" and subj == "Eiffel Tower":
+        return 1 if obj in {"Italy"} else 0
+
+    # Set violation for scenario 4
+    if pred == "hasAllergy":
+        # sugar-related context but dairy allergy
+        if obj.lower() == "dairy":
+            return 1
+        return 0
+
+    # Set violation for scenario 5
+    if pred == "hasTrait":
+        if obj.lower() == "self-serving":
+            return 1
+        return 0
+
+    # Set violation for scenario 6
+    if pred in {"requiresTool", "usesTool"} and obj.lower() == "oven":
+        return 1
+
+    # Set violation for scenario 8
+    if pred == "requiresTool" and obj.lower() == "oven":
+        return 1
+
+    # Set violations for scenario 9
+    if pred == "hasAge":
+        age = int(obj)
+        if age > 110:
+            return 1
+        else:   
+            return 0    
+
+    # Set violations for scenario 11
+    if obj == "Reserved":
+            return 1  
+
     return 0
 
 def flatten_extractions(extract_dict: Dict[str, List[Dict[str, str]]]) -> List[Tuple[str, Dict[str, str]]]:
@@ -612,6 +657,7 @@ def collect_labels(state: InbetweenState) -> Tuple[List[int], List[int], List[Tu
                 gold = 1
         pred = 1 if (chunk_name, t['subj'], t['pred'], t['obj']) in conflict_set else 0
         y_true.append(gold)
+        print(f"The y true list is: {y_true}")
         y_pred.append(pred)
         aligned.append((chunk_name, t))
     return y_true, y_pred, aligned
@@ -937,7 +983,3 @@ if __name__ == "__main__":
 
     scenarios = [scenario_1, scenario_2, scenario_3, scenario_4, scenario_5, scenario_6, scenario_8, scenario_9, scenario_11]
     runs, micro_b, micro_a, res = run_suite(scenarios)
-    print(f"Runs: {runs}")
-    print(f"Micro-averaged metrics before: {micro_b}")
-    print(f"Micro-averaged metrics after: {micro_a}")
-    print(f"Resolution rate: {res:.3f}")
