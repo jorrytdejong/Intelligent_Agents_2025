@@ -563,6 +563,14 @@ def violation_oracle(triple: Dict[str, str]) -> int:
     return 0
 
 def flatten_extractions(extract_dict: Dict[str, List[Dict[str, str]]]) -> List[Tuple[str, Dict[str, str]]]:
+    """
+    Converts a nested dictionary of extracted triples into a flat list.
+
+    Example:
+        {"chunk_0": [{"subj": "A", "pred": "P", "obj": "O"}]}
+    becomes:
+        [("chunk_0", {"subj": "A", "pred": "P", "obj": "O"})]
+    """
     items = []
     for chunk_name, triples in extract_dict.items():
         for t in triples:
@@ -570,6 +578,20 @@ def flatten_extractions(extract_dict: Dict[str, List[Dict[str, str]]]) -> List[T
     return items
 
 def collect_labels(state: InbetweenState) -> Tuple[List[int], List[int], List[Tuple[str, Dict[str, str]]]]:
+    """
+    Aligns predicted conflict labels with gold (oracle) labels for evaluation.
+
+    Steps:
+    1. Flattens all extracted triples.
+    2. Builds a set of predicted conflicts from 'state["conflicts"]'.
+    3. Computes gold labels using violation_oracle() and adds extra rule:
+       - If a subject appears with >1 occupation → mark as gold violation.
+    4. Creates binary label lists:
+       y_true = gold (oracle)
+       y_pred = predicted (from SPARQL conflict set)
+    Returns all aligned triples and labels.
+    """
+
     flat = flatten_extractions(state['extract'])
 
     # Build predicted conflict set
@@ -595,6 +617,10 @@ def collect_labels(state: InbetweenState) -> Tuple[List[int], List[int], List[Tu
     return y_true, y_pred, aligned
 
 def compute_metrics(y_true: List[int], y_pred: List[int]) -> Dict[str, Any]:
+    """
+    Computes classification metrics for predicted vs. gold labels.
+    """
+
     tp = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 1 and yp == 1)
     tn = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 0 and yp == 0)
     fp = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 0 and yp == 1)
@@ -607,6 +633,15 @@ def compute_metrics(y_true: List[int], y_pred: List[int]) -> Dict[str, Any]:
             "precision": prec, "recall": rec, "f1": f1, "accuracy": acc}
 
 def reputation_scores(aligned_records: List[Tuple[str, Dict[str, str]]], y_true: List[int]) -> Dict[str, Any]:
+    """
+    Computes a 'reputation' score based on non-violations (gold=0).
+
+    - overall: ratio of consistent triples to total
+    - by_chunk: reputation per story chunk
+    - by_subject: reputation per story character
+    Used as a qualitative measure of narrative consistency.
+    """
+    
     total = len(y_true)
     non_viol = sum(1 for v in y_true if v == 0)
     overall = non_viol / total if total else 1.0
@@ -623,6 +658,13 @@ def reputation_scores(aligned_records: List[Tuple[str, Dict[str, str]]], y_true:
     return {"overall": overall, "by_chunk": chunk_rep, "by_subject": subj_rep}
 
 def recompute_on_text(chunks: List[str]) -> Tuple[Dict[str, List[Dict[str, str]]], Dict[str, List[Dict[str, str]]]]:
+    """
+    Re-runs extraction and conflict detection on a list of story chunks.
+
+    Used after rewriting to verify that inconsistencies were resolved.
+    Returns:
+        (new_extractions, new_conflicts)
+    """
     temp_state: InbetweenState = {
         "story": " ".join(chunks),
         "chunks": chunks,
@@ -770,12 +812,11 @@ def write_html_report(path: str,
         f.write(html)
 
 def run_one_story(story_text: str):
+    
     # Pre
     state = chunk({"story": story_text})
     state = extract(state)
     state = check_conflicts(state)
-    num_triples = sum(len(v) for v in state['extract'].values())
-    num_conflicts = sum(len(v) for v in state['conflicts'].values())
     y_true_b, y_pred_b, _ = collect_labels(state)
     mb = compute_metrics(y_true_b, y_pred_b)
     vb = sum(y_true_b)
